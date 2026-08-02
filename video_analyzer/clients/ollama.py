@@ -1,7 +1,10 @@
 import requests
 import json
+import logging
 from typing import Optional, Dict, Any
 from .llm_client import LLMClient
+
+logger = logging.getLogger(__name__)
 
 class OllamaClient(LLMClient):
     def __init__(self, base_url: str = "http://localhost:11434"):
@@ -16,21 +19,27 @@ class OllamaClient(LLMClient):
         temperature: float = 0.2,
         num_predict: int = 256) -> Dict[Any, Any]:
         try:
-            # Build the request data
+            # Build the request data using chat format for better vision support
+            content = [{"type": "text", "text": prompt}]
+            
+            if image_path:
+                base64_image = self.encode_image(image_path)
+                content.append({
+                    "type": "image_url",
+                    "image_url": f"data:image/jpeg;base64,{base64_image}"
+                })
+                logger.debug(f"Image encoded and added to message (size: {len(base64_image)} chars)")
+            
             data = {
                 "model": model,
-                "prompt": prompt,
+                "messages": [{"role": "user", "content": content}],
                 "stream": stream,
                 "options": {
                     "temperature": temperature,
                     "num_predict": num_predict
                 }
             }
-            
-            if image_path:
-                # Use encode_image from parent LLMClient class
-                data["images"] = [self.encode_image(image_path)]
-                    
+                
             response = requests.post(self.generate_url, json=data)
             response.raise_for_status()
             

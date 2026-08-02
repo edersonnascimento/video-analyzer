@@ -113,6 +113,10 @@ def main():
         
         # Stage 1: Frame and Audio Processing
         if args.start_stage <= 1:
+            logger.info("=" * 60)
+            logger.info("STAGE 1: Frame & Audio Extraction")
+            logger.info("=" * 60)
+            
             # Initialize audio processor and extract transcript, the AudioProcessor accept following parameters that can be set in config.json:
             # language (str): Language code for audio transcription (default: None)
             # whisper_model (str): Whisper model size or path (default: "medium")
@@ -122,9 +126,14 @@ def main():
                                              model_size_or_path=config.get("audio", {}).get("whisper_model", "medium"),
                                              device=config.get("audio", {}).get("device", "cpu"))
             
+            logger.info(f"Processing video: {video_path}")
             logger.info("Extracting audio from video...")
             try:
                 audio_path = audio_processor.extract_audio(video_path, output_dir)
+                if audio_path:
+                    logger.info(f"Audio extracted successfully: {audio_path}")
+                else:
+                    logger.warning("No audio track found in video")
             except Exception as e:
                 logger.error(f"Error extracting audio: {e}")
                 audio_path = None
@@ -133,12 +142,14 @@ def main():
                 logger.debug("No audio found in video - skipping transcription")
                 transcript = None
             else:
-                logger.info("Transcribing audio...")
+                logger.info("Transcribing audio with Whisper...")
                 transcript = audio_processor.transcribe(audio_path)
                 if transcript is None:
                     logger.warning("Could not generate reliable transcript. Proceeding with video analysis only.")
+                else:
+                    logger.info(f"Audio transcription complete. Duration: {len(transcript.segments)} segments")
             
-            logger.info(f"Extracting frames from video using model {model}...")
+            logger.info("Extracting keyframes from video...")
             processor = VideoProcessor(
                 video_path, 
                 output_dir / "frames", 
@@ -149,25 +160,43 @@ def main():
                 duration=config.get("duration"),
                 max_frames=args.max_frames
             )
+            logger.info(f"Extracted {len(frames)} keyframes")
             
         # Stage 2: Frame Analysis
         if args.start_stage <= 2:
-            logger.info("Analyzing frames...")
-            analyzer = VideoAnalyzer(
-                client, 
-                model, 
-                prompt_loader,
-                config.get("clients", {}).get("temperature", 0.2),
-                config.get("prompt", "")
-            )
-            frame_analyses = []
-            for frame in frames:
-                analysis = analyzer.analyze_frame(frame)
-                frame_analyses.append(analysis)
+            logger.info("=" * 60)
+            logger.info("STAGE 2: Frame Analysis")
+            logger.info("=" * 60)
+            
+            if not frames:
+                logger.warning("No frames extracted - skipping frame analysis")
+                frame_analyses = []
+            else:
+                logger.info(f"Analyzing {len(frames)} frames with model {model}...")
+                analyzer = VideoAnalyzer(
+                    client, 
+                    model, 
+                    prompt_loader,
+                    config.get("clients", {}).get("temperature", 0.2),
+                    config.get("prompt", "")
+                )
+                frame_analyses = []
+                for i, frame in enumerate(frames):
+                    logger.info(f"Analyzing frame {i + 1}/{len(frames)} (timestamp: {frame.timestamp:.2f}s)")
+                    analysis = analyzer.analyze_frame(frame)
+                    frame_analyses.append(analysis)
+                    if 'response' in analysis:
+                        logger.debug(f"Frame {i + 1} analysis complete")
                 
         # Stage 3: Video Reconstruction
         if args.start_stage <= 3:
-            logger.info("Reconstructing video description...")
+            logger.info("=" * 60)
+            logger.info("STAGE 3: Video Reconstruction")
+            logger.info("=" * 60)
+            
+            transcript_info = f", transcript available ({len(transcript.segments) if transcript else 0} segments)" if transcript else ", no transcript"
+            logger.info(f"Reconstructing video description from {len(frame_analyses)} frame analyses{transcript_info}")
+            
             video_description = analyzer.reconstruct_video(
                 frame_analyses, frames, transcript
             )
