@@ -74,6 +74,7 @@ class GenericOpenAIAPIClient(LLMClient):
                     json_response = response.json()
                     
                     logger.debug(f"API response status: {response.status_code}")
+                    logger.debug(f"Response keys: {json_response.keys()}")
                     
                     if 'error' in json_response:
                         logger.error(f"API returned error: {json_response['error']}")
@@ -86,9 +87,14 @@ class GenericOpenAIAPIClient(LLMClient):
                         logger.warning("No choices in API response")
                         raise Exception("No choices in response")
                         
-                    message = json_response['choices'][0].get('message', {})
-                    if not message or 'content' not in message:
-                        logger.warning(f"Response message missing content. Keys: {message.keys() if message else 'None'}")
+                    choice = json_response['choices'][0]
+                    logger.debug(f"Choice keys: {choice.keys()}")
+                    
+                    message = choice.get('message', {})
+                    logger.debug(f"Message type: {type(message)}, Message keys: {message.keys() if isinstance(message, dict) else 'Not a dict'}")
+                    
+                    if not isinstance(message, dict) or 'content' not in message:
+                        logger.warning(f"Response message missing content. Type: {type(message)}, Keys: {message.keys() if isinstance(message, dict) else 'N/A'}")
                         raise Exception("No content in response message")
                     
                     response_content = message['content']
