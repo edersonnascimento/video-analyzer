@@ -97,11 +97,15 @@ class GenericOpenAIAPIClient(LLMClient):
                         logger.warning(f"Response message missing content. Type: {type(message)}, Keys: {message.keys() if isinstance(message, dict) else 'N/A'}")
                         raise Exception("No content in response message")
                     
-                    response_content = message['content']
-                    logger.debug(f"API returned response ({len(response_content)} chars), content preview: {repr(response_content[:100]) if response_content else 'EMPTY'}")
+                    # Extract content - check both 'content' and 'reasoning_content' fields
+                    response_content = message.get('content', '')
                     
-                    # Log full response structure for debugging
-                    logger.debug(f"Full message: {message}")
+                    # If content is empty but reasoning_content exists, use that instead
+                    if not response_content and message.get('reasoning_content'):
+                        logger.debug("Primary content empty, using reasoning_content instead")
+                        response_content = message['reasoning_content']
+                    
+                    logger.debug(f"API returned response ({len(response_content)} chars), content preview: {repr(response_content[:100]) if response_content else 'EMPTY'}")
                     
                     return {"response": response_content}
                     
