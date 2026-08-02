@@ -4,8 +4,21 @@ import base64
 
 class LLMClient(ABC):
     def encode_image(self, image_path: str) -> str:
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
+        """Encode an image file to base64 string."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            with open(image_path, "rb") as image_file:
+                image_data = image_file.read()
+                logger.debug(f"Read {len(image_data)} bytes from {image_path}")
+                return base64.b64encode(image_data).decode('utf-8')
+        except FileNotFoundError:
+            logger.error(f"Image file not found: {image_path}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to encode image {image_path}: {e}")
+            raise
 
     @abstractmethod
     def generate(self,

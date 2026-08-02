@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 import logging
 from .clients.llm_client import LLMClient
 from .prompt import PromptLoader
@@ -61,6 +62,15 @@ class VideoAnalyzer:
         prompt = f"{prompt}\nThis is frame {frame.number} captured at {frame.timestamp:.2f} seconds."
         
         try:
+            logger.debug(f"Frame path: {frame.path}")
+            
+            # Validate frame file exists before sending to API
+            if not Path(frame.path).exists():
+                logger.error(f"Frame file does not exist: {frame.path}")
+                error_result = {"response": f"Error: Frame file not found at {frame.path}"}
+                self.previous_analyses.append(error_result)
+                return error_result
+            
             response = self.client.generate(
                 prompt=prompt,
                 image_path=str(frame.path),
@@ -68,7 +78,8 @@ class VideoAnalyzer:
                 temperature=self.temperature,
                 num_predict=300
             )
-            logger.debug(f"Successfully analyzed frame {frame.number}")
+            
+            logger.debug(f"Frame {frame.number} analysis complete - response length: {len(response.get('response', ''))} chars")
             
             # Store the analysis for future frames
             analysis_result = {k: v for k, v in response.items() if k != "context"}

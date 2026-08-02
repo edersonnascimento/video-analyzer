@@ -30,7 +30,9 @@ class GenericOpenAIAPIClient(LLMClient):
         """Generate response from OpenAI-compatible API."""
         # Prepare request content
         if image_path:
+            logger.debug(f"Encoding image: {image_path}")
             base64_image = self.encode_image(image_path)
+            logger.debug(f"Image encoded successfully ({len(base64_image)} chars base64)")
             content = [
                 {"type": "text", "text": prompt},
                 {
@@ -39,6 +41,7 @@ class GenericOpenAIAPIClient(LLMClient):
                 }
             ]
         else:
+            logger.debug("No image provided, sending text-only prompt")
             content = prompt
 
         # Prepare request data
@@ -49,6 +52,8 @@ class GenericOpenAIAPIClient(LLMClient):
             "temperature": temperature,
             "max_tokens": num_predict
         }
+        
+        logger.debug(f"Sending request to {self.generate_url}")
 
         # Prepare headers
         headers = {
@@ -67,20 +72,28 @@ class GenericOpenAIAPIClient(LLMClient):
                 # Parse successful response
                 try:
                     json_response = response.json()
+                    
+                    logger.debug(f"API response status: {response.status_code}")
+                    
                     if 'error' in json_response:
+                        logger.error(f"API returned error: {json_response['error']}")
                         raise Exception(f"API error: {json_response['error']}")
                     
                     if stream:
                         return self._handle_streaming_response(response)
                     
                     if 'choices' not in json_response or not json_response['choices']:
+                        logger.warning("No choices in API response")
                         raise Exception("No choices in response")
                         
                     message = json_response['choices'][0].get('message', {})
                     if not message or 'content' not in message:
+                        logger.warning(f"Response message missing content. Keys: {message.keys() if message else 'None'}")
                         raise Exception("No content in response message")
-                        
-                    return {"response": message['content']}
+                    
+                    response_content = message['content']
+                    logger.debug(f"API returned response ({len(response_content)} chars)")
+                    return {"response": response_content}
                     
                 except json.JSONDecodeError:
                     raise Exception(f"Invalid JSON response: {response.text}")
