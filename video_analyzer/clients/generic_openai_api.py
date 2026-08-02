@@ -98,7 +98,11 @@ class GenericOpenAIAPIClient(LLMClient):
                         raise Exception("No content in response message")
                     
                     response_content = message['content']
-                    logger.debug(f"API returned response ({len(response_content)} chars)")
+                    logger.debug(f"API returned response ({len(response_content)} chars), content preview: {repr(response_content[:100]) if response_content else 'EMPTY'}")
+                    
+                    # Log full response structure for debugging
+                    logger.debug(f"Full message: {message}")
+                    
                     return {"response": response_content}
                     
                 except json.JSONDecodeError:
