@@ -78,8 +78,16 @@ def _load_example(output_dir: Path) -> TrainingExample:
     if not frame_analyses:
         raise ValueError(f"No frame_analyses found in {analysis_file}")
 
-    # Reconstruct frame image paths from the frames/ subdirectory
+    # Reconstruct frame image paths — frames may live in:
+    #   - output_dir/frames           (legacy layout)
+    #   - output_dir/<video_stem>/frames  (new per-run isolation layout)
+    video_path = data.get("video_path") or str(output_dir)
     frames_dir = output_dir / "frames"
+    if not frames_dir.exists():
+        video_stem = Path(video_path).stem
+        alt_frames_dir = output_dir / video_stem / "frames"
+        if alt_frames_dir.exists():
+            frames_dir = alt_frames_dir
     image_paths = _find_frame_images(frames_dir, len(frame_analyses))
 
     frames = []

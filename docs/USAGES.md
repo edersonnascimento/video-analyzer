@@ -6,6 +6,7 @@ This guide covers all configuration options and command line arguments for the v
 - [Basic Usage](#basic-usage)
 - [Command Line Arguments](#command-line-arguments)
 - [Configuration System](#configuration-system)
+- [Output Layout](#output-layout)
 - [Common Use Cases](#common-use-cases)
 - [Advanced Examples](#advanced-examples)
 
@@ -27,7 +28,7 @@ video-analyzer path/to/video.mp4 --client openai_api --api-key your-key --api-ur
 |----------|-------------|---------|---------|
 | `video_path` | Path to the input video file | (Required) | `video.mp4` |
 | `--config` | Path to configuration directory | config/ | `--config /path/to/config/` |
-| `--output` | Output directory for analysis results | output/ | `--output ./results/` |
+| `--output` | Output path for the analysis JSON. Accepts a **full file path** (e.g. `./results/my_video.json`) or a **directory** (analysis.json is written inside). | `output/analysis.json` | `--output ./results/video1.json` |
 | `--client` | Client to use (ollama or openai_api) | ollama | `--client openai_api` |
 | `--ollama-url` | URL for the Ollama service | http://localhost:11434 | `--ollama-url http://localhost:11434` |
 | `--api-key` | API key for OpenAI-compatible service | None | `--api-key sk-xxx...` |
@@ -134,10 +135,37 @@ The tool uses a cascading configuration system with the following priority:
 - `audio.language`: Force specific language (null for auto-detect)
 
 #### General Settings
-- `prompt_dir`: Custom prompt directory path
-- `output_dir`: Analysis output directory
-- `keep_frames`: Retain extracted frames
-- `prompt`: Custom analysis prompt
+ - `prompt_dir`: Custom prompt directory path
+ - `output_dir`: Analysis output directory
+ - `keep_frames`: Retain extracted frames
+ - `prompt`: Custom analysis prompt
+
+## Output Layout
+
+By default, analysis results are written to `output/analysis.json`. The `--output` flag accepts either a full file path or a directory:
+
+```bash
+# Full file path — results written to results/my_video.json
+video-analyzer video.mp4 --output ./results/my_video.json
+
+# Directory — analysis.json written inside the directory
+video-analyzer video.mp4 --output ./results/
+```
+
+Intermediate artifacts (extracted frames and audio) are placed in a **per-run subfolder** under the output directory, named after the video file stem:
+
+```
+output/
+├── analysis.json          # final results
+└── my_video/              # work_dir (isolated artifacts)
+    ├── audio.wav
+    └── frames/
+        ├── frame_0.jpg
+        ├── frame_1.jpg
+        └── ...
+```
+
+This isolation means multiple analyses can run concurrently to the same output directory without colliding. Use `--keep-frames` to retain the `frames/` subfolder; otherwise it is cleaned up automatically after analysis.
 
 ## Common Use Cases
 

@@ -88,6 +88,8 @@ class Config:
                     self.config["clients"]["temperature"] = value
                 elif key == "context_window":
                     self.config["frames"]["context_window"] = value
+                elif key == "output":
+                    self.config["output_dir"] = value
                 elif key not in ["start_stage", "max_frames"]:  # Ignore these as they're command-line only
                     self.config[key] = value
 
