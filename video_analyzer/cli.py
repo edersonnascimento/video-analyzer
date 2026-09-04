@@ -73,6 +73,8 @@ def main():
     parser.add_argument("--whisper-model", type=str, help="Whisper model size (tiny, base, small, medium, large), or path to local Whisper model snapshot")
     parser.add_argument("--start-stage", type=int, default=1, help="Stage to start processing from (1-3)")
     parser.add_argument("--max-frames", type=int, default=sys.maxsize, help="Maximum number of frames to process")
+    parser.add_argument("--context-window", type=int, default=None,
+                        help="Number of previous frame analyses to include in each frame's prompt (sliding window). Default: 30. Use 0 for no limit.")
     parser.add_argument("--log-level", type=str, default="INFO", 
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Set the logging level (default: INFO)")
@@ -178,7 +180,11 @@ def main():
                     model, 
                     prompt_loader,
                     config.get("clients", {}).get("temperature", 0.2),
-                    config.get("prompt", "")
+                    config.get("prompt", ""),
+                    context_window=config.get("frames", {}).get("context_window", 30),
+                    frame_response_length=config.get("response_length", {}).get("frame", 300),
+                    reconstruction_response_length=config.get("response_length", {}).get("reconstruction", 1000),
+                    reasoning_budget=config.get("response_length", {}).get("reasoning", 0)
                 )
                 frame_analyses = []
                 for i, frame in enumerate(frames):

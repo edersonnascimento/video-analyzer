@@ -9,7 +9,7 @@ from .audio_processor import AudioTranscript
 logger = logging.getLogger(__name__)
 
 class VideoAnalyzer:
-    def __init__(self, client: LLMClient, model: str, prompt_loader: PromptLoader, temperature: float, user_prompt: str = ""):
+    def __init__(self, client: LLMClient, model: str, prompt_loader: PromptLoader, temperature: float, user_prompt: str = "", context_window: int = 30, frame_response_length: int = 300, reconstruction_response_length: int = 1000, reasoning_budget: int = 0):
         """Initialize the VideoAnalyzer.
         
         Args:
@@ -18,12 +18,24 @@ class VideoAnalyzer:
             prompt_loader: Loader for prompt templates
             user_prompt: Optional user question about the video that will be injected into frame analysis
                         and video description prompts using the {prompt} token
+            context_window: Number of previous frame analyses to include in each frame's prompt.
+                            Uses a sliding window to bound context growth. A value <= 0 disables
+                            the window and includes all previous analyses.
+            frame_response_length: Max tokens (num_predict) for each frame analysis.
+            reconstruction_response_length: Max tokens (num_predict) for the final video description.
+            reasoning_budget: Extra tokens reserved for chain-of-thought when using a reasoning model.
+                              It is added on top of the response length so reasoning has room to
+                              finish before the final answer is produced.
         """
         self.client = client
         self.model = model
         self.prompt_loader = prompt_loader
         self.temperature = temperature
         self.user_prompt = user_prompt  # Store user's question about the video
+        self.context_window = context_window
+        self.frame_response_length = frame_response_length
+        self.reconstruction_response_length = reconstruction_response_length
+        self.reasoning_budget = reasoning_budget
         self._load_prompts()
         self.previous_analyses = []
         
@@ -39,18 +51,29 @@ class VideoAnalyzer:
         self.video_prompt = self.prompt_loader.get_by_index(1)  # Video Reconstruction prompt
 
     def _format_previous_analyses(self) -> str:
-        """Format previous frame analyses for inclusion in prompt."""
+        """Format previous frame analyses for inclusion in prompt.
+
+        Applies a sliding window so that only the most recent
+        ``context_window`` analyses are included, bounding prompt growth for
+        long videos.
+        """
         if not self.previous_analyses:
             return ""
-            
+
+        analyses = self.previous_analyses
+        start_index = 0
+        if self.context_window > 0:
+            analyses = self.previous_analyses[-self.context_window:]
+            start_index = len(self.previous_analyses) - len(analyses)
+
         formatted_analyses = []
-        for i, analysis in enumerate(self.previous_analyses):
+        for offset, analysis in enumerate(analyses):
             formatted_analysis = (
-                f"Frame {i}\n"
+                f"Frame {start_index + offset}\n"
                 f"{analysis.get('response', 'No analysis available')}\n"
             )
             formatted_analyses.append(formatted_analysis)
-            
+
         return "\n".join(formatted_analyses)
 
     def analyze_frame(self, frame: Frame) -> Dict[str, Any]:
@@ -76,7 +99,7 @@ class VideoAnalyzer:
                 image_path=str(frame.path),
                 model=self.model,
                 temperature=self.temperature,
-                num_predict=300
+                num_predict=self.frame_response_length + self.reasoning_budget
             )
             
             logger.debug(f"Frame {frame.number} analysis complete - response length: {len(response.get('response', ''))} chars")
@@ -126,7 +149,7 @@ class VideoAnalyzer:
                 prompt=prompt,
                 model=self.model,
                 temperature=self.temperature,
-                num_predict=1000
+                num_predict=self.reconstruction_response_length + self.reasoning_budget
             )
             logger.info("Successfully reconstructed video description")
             return {k: v for k, v in response.items() if k != "context"}

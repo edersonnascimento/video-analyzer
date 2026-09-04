@@ -38,6 +38,7 @@ video-analyzer path/to/video.mp4 --client openai_api --api-key your-key --api-ur
 | `--whisper-model` | Whisper model size or model path | medium | `--whisper-model large` |
 | `--start-stage` | Stage to start processing from (1-3) | 1 | `--start-stage 2` |
 | `--max-frames` | Maximum number of frames to process. When specified, frames are sampled evenly across the video duration rather than just taking the first N frames. | sys.maxsize | `--max-frames 100` |
+| `--context-window` | Number of previous frame analyses included in each frame's prompt (sliding window). Use `0` for no limit. | 30 | `--context-window 10` |
 | `--log-level` | Set logging level | INFO | `--log-level DEBUG` |
 | `--prompt` | Question to ask about the video | "" | `--prompt "What activities are shown?"` |
 | `--language` | Set language for transcription | None (auto-detect) | `--language en` |
@@ -116,11 +117,13 @@ The tool uses a cascading configuration system with the following priority:
 - `frames.analysis_threshold`: Threshold for key frame detection
 - `frames.min_difference`: Minimum difference between frames
 - `frames.max_count`: Maximum frames to extract
+- `frames.context_window`: Number of previous frame analyses included in each frame's prompt (sliding window). Use `0` for no limit.
 
 #### Response Length Settings
-- `response_length.frame`: Max length for frame analysis
-- `response_length.reconstruction`: Max length for video reconstruction
+- `response_length.frame`: Max tokens (num_predict) for frame analysis
+- `response_length.reconstruction`: Max tokens (num_predict) for video reconstruction
 - `response_length.narrative`: Max length for enhanced narrative
+- `response_length.reasoning`: Extra tokens reserved for chain-of-thought on reasoning models. Added on top of `frame`/`reconstruction` so reasoning can finish before the final answer. Set `0` when reasoning is disabled.
 
 #### Audio Processing Settings
 - `audio.sample_rate`: Audio sample rate in Hz

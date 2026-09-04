@@ -30,12 +30,14 @@
         "min_difference": 5.0,
         "max_count": 30,
         "start_stage": 1,
-        "max_frames": 2147483647
+        "max_frames": 2147483647,
+        "context_window": 30
     },
     "response_length": {
         "frame": 300,
         "reconstruction": 1000,
-        "narrative": 500
+        "narrative": 500,
+        "reasoning": 0
     },
     "audio": {
         "whisper_model": "medium",
