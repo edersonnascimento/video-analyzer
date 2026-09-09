@@ -6,6 +6,7 @@ This guide covers all configuration options and command line arguments for the v
 - [Basic Usage](#basic-usage)
 - [Command Line Arguments](#command-line-arguments)
 - [Configuration System](#configuration-system)
+- [Output Layout](#output-layout)
 - [Common Use Cases](#common-use-cases)
 - [Advanced Examples](#advanced-examples)
 
@@ -27,7 +28,7 @@ video-analyzer path/to/video.mp4 --client openai_api --api-key your-key --api-ur
 |----------|-------------|---------|---------|
 | `video_path` | Path to the input video file | (Required) | `video.mp4` |
 | `--config` | Path to configuration directory | config/ | `--config /path/to/config/` |
-| `--output` | Output directory for analysis results | output/ | `--output ./results/` |
+| `--output` | Output path for the analysis JSON. Accepts a **full file path** (e.g. `./results/my_video.json`) or a **directory** (analysis.json is written inside). | `output/analysis.json` | `--output ./results/video1.json` |
 | `--client` | Client to use (ollama or openai_api) | ollama | `--client openai_api` |
 | `--ollama-url` | URL for the Ollama service | http://localhost:11434 | `--ollama-url http://localhost:11434` |
 | `--api-key` | API key for OpenAI-compatible service | None | `--api-key sk-xxx...` |
@@ -38,6 +39,7 @@ video-analyzer path/to/video.mp4 --client openai_api --api-key your-key --api-ur
 | `--whisper-model` | Whisper model size or model path | medium | `--whisper-model large` |
 | `--start-stage` | Stage to start processing from (1-3) | 1 | `--start-stage 2` |
 | `--max-frames` | Maximum number of frames to process. When specified, frames are sampled evenly across the video duration rather than just taking the first N frames. | sys.maxsize | `--max-frames 100` |
+| `--context-window` | Number of previous frame analyses included in each frame's prompt (sliding window). Use `0` for no limit. | 30 | `--context-window 10` |
 | `--log-level` | Set logging level | INFO | `--log-level DEBUG` |
 | `--prompt` | Question to ask about the video | "" | `--prompt "What activities are shown?"` |
 | `--language` | Set language for transcription | None (auto-detect) | `--language en` |
@@ -116,11 +118,13 @@ The tool uses a cascading configuration system with the following priority:
 - `frames.analysis_threshold`: Threshold for key frame detection
 - `frames.min_difference`: Minimum difference between frames
 - `frames.max_count`: Maximum frames to extract
+- `frames.context_window`: Number of previous frame analyses included in each frame's prompt (sliding window). Use `0` for no limit.
 
 #### Response Length Settings
-- `response_length.frame`: Max length for frame analysis
-- `response_length.reconstruction`: Max length for video reconstruction
+- `response_length.frame`: Max tokens (num_predict) for frame analysis
+- `response_length.reconstruction`: Max tokens (num_predict) for video reconstruction
 - `response_length.narrative`: Max length for enhanced narrative
+- `response_length.reasoning`: Extra tokens reserved for chain-of-thought on reasoning models. Added on top of `frame`/`reconstruction` so reasoning can finish before the final answer. Set `0` when reasoning is disabled.
 
 #### Audio Processing Settings
 - `audio.sample_rate`: Audio sample rate in Hz
@@ -131,10 +135,37 @@ The tool uses a cascading configuration system with the following priority:
 - `audio.language`: Force specific language (null for auto-detect)
 
 #### General Settings
-- `prompt_dir`: Custom prompt directory path
-- `output_dir`: Analysis output directory
-- `keep_frames`: Retain extracted frames
-- `prompt`: Custom analysis prompt
+ - `prompt_dir`: Custom prompt directory path
+ - `output_dir`: Analysis output directory
+ - `keep_frames`: Retain extracted frames
+ - `prompt`: Custom analysis prompt
+
+## Output Layout
+
+By default, analysis results are written to `output/analysis.json`. The `--output` flag accepts either a full file path or a directory:
+
+```bash
+# Full file path — results written to results/my_video.json
+video-analyzer video.mp4 --output ./results/my_video.json
+
+# Directory — analysis.json written inside the directory
+video-analyzer video.mp4 --output ./results/
+```
+
+Intermediate artifacts (extracted frames and audio) are placed in a **per-run subfolder** under the output directory, named after the video file stem:
+
+```
+output/
+├── analysis.json          # final results
+└── my_video/              # work_dir (isolated artifacts)
+    ├── audio.wav
+    └── frames/
+        ├── frame_0.jpg
+        ├── frame_1.jpg
+        └── ...
+```
+
+This isolation means multiple analyses can run concurrently to the same output directory without colliding. Use `--keep-frames` to retain the `frames/` subfolder; otherwise it is cleaned up automatically after analysis.
 
 ## Common Use Cases
 

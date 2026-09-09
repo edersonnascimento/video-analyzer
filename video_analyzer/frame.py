@@ -108,7 +108,12 @@ class VideoProcessor:
         self.frames = []
         for idx, (frame_num, frame, score) in enumerate(selected_frames):
             frame_path = self.output_dir / f"frame_{idx}.jpg"
-            cv2.imwrite(str(frame_path), frame)
+            success, buffer = cv2.imencode('.jpg', frame)
+            if success:
+                with open(frame_path, 'wb') as f:
+                    f.write(buffer.tobytes())
+            else:
+                logger.warning(f"Failed to encode frame {idx} as JPEG — image not written to disk")
             timestamp = frame_num / fps
             self.frames.append(Frame(idx, frame_path, timestamp, score))
         

@@ -30,18 +30,12 @@ def get_log_level(level_str: str) -> int:
     }
     return levels.get(level_str.upper(), logging.INFO)
 
-def cleanup_files(output_dir: Path):
-    """Clean up temporary files and directories."""
+def cleanup_files(work_dir: Path):
+    """Remove the intermediate artifacts subfolder (frames + audio)."""
     try:
-        frames_dir = output_dir / "frames"
-        if frames_dir.exists():
-            shutil.rmtree(frames_dir)
-            logger.debug(f"Cleaned up frames directory: {frames_dir}")
-            
-        audio_file = output_dir / "audio.wav"
-        if audio_file.exists():
-            audio_file.unlink()
-            logger.debug(f"Cleaned up audio file: {audio_file}")
+        if work_dir.exists():
+            shutil.rmtree(work_dir)
+            logger.debug(f"Cleaned up artifacts directory: {work_dir}")
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
 
@@ -62,7 +56,7 @@ def main():
     parser.add_argument("video_path", type=str, help="Path to the video file")
     parser.add_argument("--config", type=str, default="config",
                         help="Path to configuration directory")
-    parser.add_argument("--output", type=str, help="Output directory for analysis results")
+    parser.add_argument("--output", type=str, help="Output path for analysis results. Can be a full file path (e.g. ./results/my_video.json) or a directory (analysis.json is written inside).")
     parser.add_argument("--client", type=str, help="Client to use (ollama or openrouter)")
     parser.add_argument("--ollama-url", type=str, help="URL for the Ollama service")
     parser.add_argument("--api-key", type=str, help="API key for OpenAI-compatible service")
@@ -73,6 +67,8 @@ def main():
     parser.add_argument("--whisper-model", type=str, help="Whisper model size (tiny, base, small, medium, large), or path to local Whisper model snapshot")
     parser.add_argument("--start-stage", type=int, default=1, help="Stage to start processing from (1-3)")
     parser.add_argument("--max-frames", type=int, default=sys.maxsize, help="Maximum number of frames to process")
+    parser.add_argument("--context-window", type=int, default=None,
+                        help="Number of previous frame analyses to include in each frame's prompt (sliding window). Default: 30. Use 0 for no limit.")
     parser.add_argument("--log-level", type=str, default="INFO", 
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Set the logging level (default: INFO)")
@@ -100,7 +96,20 @@ def main():
 
     # Initialize components
     video_path = Path(args.video_path)
-    output_dir = Path(config.get("output_dir"))
+    output_arg = args.output or config.get("output_dir", "output")
+    output_arg = Path(output_arg)
+    if output_arg.suffix.lower() == ".json":
+        output_dir = output_arg.parent
+        output_file = output_arg.name
+    else:
+        output_dir = output_arg
+        output_file = "analysis.json"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    video_stem = video_path.stem
+    work_dir = output_dir / video_stem
+    frames_dir = work_dir / "frames"
+    output_path = output_dir / output_file
     client = create_client(config)
     model = get_model(config)
     prompt_loader = PromptLoader(config.get("prompt_dir"), config.get("prompts", []))
@@ -113,6 +122,10 @@ def main():
         
         # Stage 1: Frame and Audio Processing
         if args.start_stage <= 1:
+            logger.info("=" * 60)
+            logger.info("STAGE 1: Frame & Audio Extraction")
+            logger.info("=" * 60)
+            
             # Initialize audio processor and extract transcript, the AudioProcessor accept following parameters that can be set in config.json:
             # language (str): Language code for audio transcription (default: None)
             # whisper_model (str): Whisper model size or path (default: "medium")
@@ -122,9 +135,14 @@ def main():
                                              model_size_or_path=config.get("audio", {}).get("whisper_model", "medium"),
                                              device=config.get("audio", {}).get("device", "cpu"))
             
+            logger.info(f"Processing video: {video_path}")
             logger.info("Extracting audio from video...")
             try:
-                audio_path = audio_processor.extract_audio(video_path, output_dir)
+                audio_path = audio_processor.extract_audio(video_path, work_dir)
+                if audio_path:
+                    logger.info(f"Audio extracted successfully: {audio_path}")
+                else:
+                    logger.warning("No audio track found in video")
             except Exception as e:
                 logger.error(f"Error extracting audio: {e}")
                 audio_path = None
@@ -133,15 +151,17 @@ def main():
                 logger.debug("No audio found in video - skipping transcription")
                 transcript = None
             else:
-                logger.info("Transcribing audio...")
+                logger.info("Transcribing audio with Whisper...")
                 transcript = audio_processor.transcribe(audio_path)
                 if transcript is None:
                     logger.warning("Could not generate reliable transcript. Proceeding with video analysis only.")
+                else:
+                    logger.info(f"Audio transcription complete. Duration: {len(transcript.segments)} segments")
             
-            logger.info(f"Extracting frames from video using model {model}...")
+            logger.info("Extracting keyframes from video...")
             processor = VideoProcessor(
-                video_path, 
-                output_dir / "frames", 
+                video_path,
+                frames_dir,
                 model
             )
             frames = processor.extract_keyframes(
@@ -149,34 +169,59 @@ def main():
                 duration=config.get("duration"),
                 max_frames=args.max_frames
             )
+            logger.info(f"Extracted {len(frames)} keyframes")
             
         # Stage 2: Frame Analysis
         if args.start_stage <= 2:
-            logger.info("Analyzing frames...")
-            analyzer = VideoAnalyzer(
-                client, 
-                model, 
-                prompt_loader,
-                config.get("clients", {}).get("temperature", 0.2),
-                config.get("prompt", "")
-            )
-            frame_analyses = []
-            for frame in frames:
-                analysis = analyzer.analyze_frame(frame)
-                frame_analyses.append(analysis)
+            logger.info("=" * 60)
+            logger.info("STAGE 2: Frame Analysis")
+            logger.info("=" * 60)
+            
+            if not frames:
+                logger.warning("No frames extracted - skipping frame analysis")
+                frame_analyses = []
+            else:
+                logger.info(f"Analyzing {len(frames)} frames with model {model}...")
+                analyzer = VideoAnalyzer(
+                    client, 
+                    model, 
+                    prompt_loader,
+                    config.get("clients", {}).get("temperature", 0.2),
+                    config.get("prompt", ""),
+                    context_window=config.get("frames", {}).get("context_window", 30),
+                    frame_response_length=config.get("response_length", {}).get("frame", 300),
+                    reconstruction_response_length=config.get("response_length", {}).get("reconstruction", 1000),
+                    reasoning_budget=config.get("response_length", {}).get("reasoning", 0)
+                )
+                frame_analyses = []
+                for i, frame in enumerate(frames):
+                    logger.info(f"Analyzing frame {i + 1}/{len(frames)} (timestamp: {frame.timestamp:.2f}s)")
+                    analysis = analyzer.analyze_frame(frame)
+                    frame_analyses.append(analysis)
+                    if 'response' in analysis:
+                        logger.debug(f"Frame {i + 1} analysis complete")
                 
         # Stage 3: Video Reconstruction
         if args.start_stage <= 3:
-            logger.info("Reconstructing video description...")
+            logger.info("=" * 60)
+            logger.info("STAGE 3: Video Reconstruction")
+            logger.info("=" * 60)
+            
+            transcript_info = f", transcript available ({len(transcript.segments) if transcript else 0} segments)" if transcript else ", no transcript"
+            logger.info(f"Reconstructing video description from {len(frame_analyses)} frame analyses{transcript_info}")
+            
             video_description = analyzer.reconstruct_video(
                 frame_analyses, frames, transcript
             )
         
-        output_dir.mkdir(parents=True, exist_ok=True)
         results = {
+            "video_path": str(video_path),
+            "prompt": config.get("prompt", ""),
             "metadata": {
                 "client": config.get("clients", {}).get("default"),
                 "model": model,
+                "video_path": str(video_path),
+                "frames_dir": f"{video_stem}/frames",
                 "whisper_model": config.get("audio", {}).get("whisper_model"),
                 "frames_per_minute": config.get("frames", {}).get("per_minute"),
                 "duration_processed": config.get("duration"),
@@ -194,7 +239,7 @@ def main():
             "video_description": video_description
         }
         
-        with open(output_dir / "analysis.json", "w") as f:
+        with open(output_path, "w") as f:
             json.dump(results, f, indent=2)
             
         logger.info("\nTranscript:")
@@ -208,14 +253,14 @@ def main():
             logger.info(video_description.get("response", "No description generated"))
         
         if not config.get("keep_frames"):
-            cleanup_files(output_dir)
+            cleanup_files(work_dir)
         
-        logger.info(f"Analysis complete. Results saved to {output_dir / 'analysis.json'}")
+        logger.info(f"Analysis complete. Results saved to {output_path}")
             
     except Exception as e:
         logger.error(f"Error during video analysis: {e}")
         if not config.get("keep_frames"):
-            cleanup_files(output_dir)
+            cleanup_files(work_dir)
         raise
 
 if __name__ == "__main__":

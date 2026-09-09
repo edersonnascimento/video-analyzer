@@ -3,13 +3,13 @@
         "default": "ollama",
         "temperature": 0.0,
         "ollama": {
-            "url": "http://localhost:11434",
-            "model": "llama3.2-vision"
+            "url": "http://192.168.0.100:1234",
+            "model": "llama-3.2-11b-vision-instruct-abliterated"
         },
         "openai_api": {
-            "api_key": "",
-            "model": "meta-llama/llama-3.2-11b-vision-instruct",
-            "api_url": "https://openrouter.ai/api/v1"
+            "api_key": "SUA_CHAVE_AQUI",
+            "api_url": "http://192.168.0.100:1234/v1",
+            "model": "llama-3.2-11b-vision-instruct-abliterated"
         }
     },
     "prompt_dir": "prompts",
@@ -30,12 +30,14 @@
         "min_difference": 5.0,
         "max_count": 30,
         "start_stage": 1,
-        "max_frames": 2147483647
+        "max_frames": 2147483647,
+        "context_window": 30
     },
     "response_length": {
         "frame": 300,
         "reconstruction": 1000,
-        "narrative": 500
+        "narrative": 500,
+        "reasoning": 0
     },
     "audio": {
         "whisper_model": "medium",

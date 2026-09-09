@@ -30,15 +30,18 @@ class GenericOpenAIAPIClient(LLMClient):
         """Generate response from OpenAI-compatible API."""
         # Prepare request content
         if image_path:
+            logger.debug(f"Encoding image: {image_path}")
             base64_image = self.encode_image(image_path)
+            logger.debug(f"Image encoded successfully ({len(base64_image)} chars base64)")
             content = [
                 {"type": "text", "text": prompt},
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                    "image_url": {"url": f"data:image/png;base64,{base64_image}"}
                 }
             ]
         else:
+            logger.debug("No image provided, sending text-only prompt")
             content = prompt
 
         # Prepare request data
@@ -49,6 +52,8 @@ class GenericOpenAIAPIClient(LLMClient):
             "temperature": temperature,
             "max_tokens": num_predict
         }
+        
+        logger.debug(f"Sending request to {self.generate_url}")
 
         # Prepare headers
         headers = {
@@ -67,20 +72,42 @@ class GenericOpenAIAPIClient(LLMClient):
                 # Parse successful response
                 try:
                     json_response = response.json()
+                    
+                    logger.debug(f"API response status: {response.status_code}")
+                    logger.debug(f"Response keys: {json_response.keys()}")
+                    
                     if 'error' in json_response:
+                        logger.error(f"API returned error: {json_response['error']}")
                         raise Exception(f"API error: {json_response['error']}")
                     
                     if stream:
                         return self._handle_streaming_response(response)
                     
                     if 'choices' not in json_response or not json_response['choices']:
+                        logger.warning("No choices in API response")
                         raise Exception("No choices in response")
                         
-                    message = json_response['choices'][0].get('message', {})
-                    if not message or 'content' not in message:
+                    choice = json_response['choices'][0]
+                    logger.debug(f"Choice keys: {choice.keys()}")
+                    
+                    message = choice.get('message', {})
+                    logger.debug(f"Message type: {type(message)}, Message keys: {message.keys() if isinstance(message, dict) else 'Not a dict'}")
+                    
+                    if not isinstance(message, dict) or 'content' not in message:
+                        logger.warning(f"Response message missing content. Type: {type(message)}, Keys: {message.keys() if isinstance(message, dict) else 'N/A'}")
                         raise Exception("No content in response message")
-                        
-                    return {"response": message['content']}
+                    
+                    # Extract content - check both 'content' and 'reasoning_content' fields
+                    response_content = message.get('content', '')
+                    
+                    # If content is empty but reasoning_content exists, use that instead
+                    if not response_content and message.get('reasoning_content'):
+                        logger.debug("Primary content empty, using reasoning_content instead")
+                        response_content = message['reasoning_content']
+                    
+                    logger.debug(f"API returned response ({len(response_content)} chars), content preview: {repr(response_content[:100]) if response_content else 'EMPTY'}")
+                    
+                    return {"response": response_content}
                     
                 except json.JSONDecodeError:
                     raise Exception(f"Invalid JSON response: {response.text}")

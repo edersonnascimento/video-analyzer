@@ -1,0 +1,50 @@
+{
+    "clients": {
+        "default": "openai_api",
+        "temperature": 0.0,
+        "openai_api": {
+            "api_key": "lmstudio",
+            "api_url": "http://192.168.0.100:1234/v1",
+            "model": "bartowski/ornith-1.5-35b-a3b"
+        }
+    },
+    "prompt_dir": "prompts",
+    "prompts": [
+        {
+            "name": "Frame Analysis",
+            "path": "frame_analysis/frame-annotation-prompt.md"
+        },
+        {
+            "name": "Video Reconstruction",
+            "path": "frame_analysis/describe.txt"
+        }
+    ],
+    "output_dir": "output",
+    "frames": {
+        "per_minute": 60,
+        "analysis_threshold": 10.0,
+        "min_difference": 5.0,
+        "max_count": 30,
+        "start_stage": 1,
+        "max_frames": 2147483647,
+        "context_window": 30
+    },
+    "response_length": {
+        "frame": 1024,
+        "reconstruction": 1000,
+        "narrative": 500,
+        "reasoning": 0
+    },
+    "audio": {
+        "whisper_model": "medium",
+        "sample_rate": 16000,
+        "channels": 1,
+        "quality_threshold": 0.2,
+        "chunk_length": 30,
+        "language_confidence_threshold": 0.8,
+        "language": "pt",
+        "device": "gpu"
+    },
+    "keep_frames": false,
+    "prompt": ""
+}
